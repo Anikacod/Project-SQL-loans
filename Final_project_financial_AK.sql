@@ -188,3 +188,76 @@ order by percentage desc;
 # they have more than 5 loans,
 # they were born after 1990.
 # And we assume that the account balance is loan amount - payments.
+
+
+select  c.client_id,
+       count(amount)  as loan_number,
+       sum(amount-payments) as account_balance
+from loan l
+join account a on l.account_id = a.account_id
+join disp d on a.account_id = d.account_id
+join client c on d.client_id = c.client_id
+where l.status in ('A', 'C') -- select fully paid loans
+  and d.type ='OWNER'  -- select only 'owner' customer not 'disponent'
+  and year(birth_date)>1945      -- show only clients born after 1990
+group by c.client_id
+having  account_balance >1000  -- show only clients with account balance above 1000
+        and loan_number > 5 ;       -- write out clients who have more than 5 credits
+
+# Selection part 2
+# From the previous exercise you probably already know that there are no customers who meet the requirements.
+# Make an analysis to determine which condition caused the empty results.
+
+select  c.client_id,
+       count(amount)  as loan_number,
+       sum(amount-payments) as account_balance,
+       year(birth_date) as year_of_birth       -- checking the client's year of birth
+from loan l
+join account a on l.account_id = a.account_id
+join disp d on a.account_id = d.account_id
+join client c on d.client_id = c.client_id
+where l.status in ('A', 'C') -- select fully paid loans
+  and d.type ='OWNER'  -- select only 'owner' customer not 'disponent'
+  -- and year(birth_date)>1945      -- show only clients born after 1990
+group by c.client_id
+having  account_balance >1000  -- show only clients with account balance above 1000
+order by loan_number desc;       -- check how many maximum loans clients have
+
+# Expiring cards
+# Write a procedure to refresh the table you created (you can call it e.g. cards_at_expiration)
+# containing the following columns:
+#
+# client_id,
+# card_id,
+# expiration_date - assume that the card can be active for 3 years after issue date,
+# client_address (column A3 is enough).
+# Note: The card table has cards that were issued until the end of 1998.
+# Determine the card's expiration (7 days before inactivation)
+
+-- write procedure 
+delimiter $$
+create procedure getCardsExpiration_a (in set_date date)
+begin
+    with cte_cardexpiration as (select c.client_id as client_id,
+           ca.card_id as card_id,
+           issued as card_issued,
+           ds.A3 as client_address,
+           date_add(issued, interval 3 year ) as card_expiration_date
+    from client c
+    join disp d on c.client_id = d.client_id
+    join card ca on d.disp_id = ca.disp_id
+    join district ds on c.district_id = ds.district_id)
+    select *,
+           case  -- determine card expiration
+               when  set_date < date_sub(card_expiration_date, interval 7 day) then 'active card'
+                when set_date >= card_expiration_date then 'inactive card'
+                else 'expired soon'
+                  end as card_activity
+    from cte_cardexpiration;
+end $$
+delimiter ;
+
+-- call procedure
+call getCardsExpiration_a ('2001-10-15'); -- write out activity of the cards to date '2001-10-15'
+call getCardsExpiration_a (curdate());  -- write out activity of the cards to actual date
+drop procedure getCardsExpiration_a;
